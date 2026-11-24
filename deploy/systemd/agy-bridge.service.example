@@ -1,0 +1,28 @@
+# Linux systemd user service template for agy-cloud-bridge
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user ~/.agy-bridge/logs
+#   cp deploy/systemd/agy-bridge.service.example ~/.config/systemd/user/agy-bridge.service
+#   # Replace %h/agy-cloud-bridge and /usr/bin/node with your actual paths
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now agy-bridge.service
+#
+# Logs:
+#   journalctl --user -u agy-bridge.service -f
+
+[Unit]
+Description=agy-cloud-bridge (Cloud <-> Local Antigravity Gateway)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/agy-cloud-bridge
+ExecStart=/usr/bin/node src/cli.js start
+Restart=always
+RestartSec=5
+Environment=AGY_BRIDGE_LOG_LEVEL=info
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

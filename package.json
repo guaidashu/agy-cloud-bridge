@@ -1,0 +1,38 @@
+{
+  "name": "agy-cloud-bridge",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "author": "guaidashu",
+  "homepage": "https://github.com/guaidashu/agy-cloud-bridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guaidashu/agy-cloud-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/guaidashu/agy-cloud-bridge/issues"
+  },
+  "description": "Zero-dependency Cloud <-> Local Antigravity (agy) collaboration gateway: offload heavy AI coding & builds to the cloud to reduce local SSD wear and extend laptop lifespan.",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "agy-bridge": "src/cli.js"
+  },
+  "keywords": [
+    "antigravity",
+    "agy",
+    "ai-agent",
+    "cloud-local-bridge",
+    "ssd-longevity",
+    "developer-tools",
+    "git-sync",
+    "automation"
+  ],
+  "scripts": {
+    "start": "node src/cli.js start",
+    "doctor": "node src/cli.js doctor",
+    "check": "for f in src/*.js bridge/*.mjs test/*.test.js; do node --check \"$f\" || exit 1; done && bash -n scripts/handoff.sh scripts/cloud-sync-gate.sh start.sh stop.sh deploy/proxy/agy-proxy-launcher.sh.example",
+    "test": "node --test test/*.test.js"
+  }
+}

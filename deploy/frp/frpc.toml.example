@@ -1,0 +1,9 @@
+# FRP client snippet (frpc.toml) to expose local agy-cloud-bridge (127.0.0.1:3190)
+# to your VPS reverse proxy on remotePort (e.g. 13190).
+
+[[proxies]]
+name = "agy_bridge"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3190
+remotePort = 13190

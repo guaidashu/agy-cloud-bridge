@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Optional Fail-Closed egress proxy launcher template for agy-cloud-bridge.
+#
+# Usage:
+#   1. Copy to e.g. ~/scripts/agy-proxy-launcher.sh && chmod +x ~/scripts/agy-proxy-launcher.sh
+#   2. Create ~/scripts/proxy.env (chmod 600) with:
+#        AGY_EGRESS_PROXY="http://user:pass@proxy.example.com:8080"
+#   3. In ~/.agy-bridge/config.json:
+#        "agy": { "requireProxy": true, "launcher": "~/scripts/agy-proxy-launcher.sh" }
+#        "security": {
+#          "deniedReadRoots": [..., "~/scripts/proxy.env"],
+#          "extraRedactEnvFiles": ["~/scripts/proxy.env"]
+#        }
+#   4. Verify with: ~/scripts/agy-proxy-launcher.sh --check
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROXY_ENV_FILE="${AGY_PROXY_ENV_FILE:-$SCRIPT_DIR/proxy.env}"
+
+if [[ -f "$PROXY_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$PROXY_ENV_FILE"
+fi
+
+if [[ -z "${AGY_EGRESS_PROXY:-}" ]]; then
+  echo "Error: AGY_EGRESS_PROXY is not configured (expected in $PROXY_ENV_FILE)." >&2
+  exit 1
+fi
+
+export HTTP_PROXY="$AGY_EGRESS_PROXY"
+export HTTPS_PROXY="$AGY_EGRESS_PROXY"
+export ALL_PROXY="$AGY_EGRESS_PROXY"
+export NO_PROXY="localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+export http_proxy="$HTTP_PROXY"
+export https_proxy="$HTTPS_PROXY"
+export all_proxy="$ALL_PROXY"
+export no_proxy="$NO_PROXY"
+
+if [[ "${1:-}" == "--check" ]]; then
+  curl -sS --max-time 10 --proxy "$AGY_EGRESS_PROXY" -o /dev/null -w "Proxy HTTP status: %{http_code}\n" https://www.gstatic.com/generate_204
+  exit 0
+fi
+
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+
+AGY_BIN="${AGY_CLI:-$(command -v agy || echo "$HOME/.local/bin/agy")}"
+if [[ ! -x "$AGY_BIN" ]]; then
+  echo "Error: agy binary not found at $AGY_BIN" >&2
+  exit 1
+fi
+
+exec "$AGY_BIN" "$@"
