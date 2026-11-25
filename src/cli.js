@@ -155,6 +155,7 @@ async function cmdProject(subArgs, flags) {
       allowedBranches,
       dirtyPolicy: flags["dirty-policy"] || "safe-block",
       allowGitPush: flags["no-push"] ? false : true,
+      sandbox: flags["no-sandbox"] ? false : flags.sandbox ? true : null,
       maxRounds: flags["max-rounds"] ? Number(flags["max-rounds"]) : 5,
       fastPaths,
       localMarkerFile: flags["local-marker"] !== undefined ? normalizeLocalMarkerFile(flags["local-marker"]) : undefined,
@@ -227,6 +228,8 @@ async function cmdEnroll(subArgs, flags) {
     if (flags["dirty-policy"]) project.dirtyPolicy = flags["dirty-policy"];
     if (flags["no-push"]) project.allowGitPush = false;
     else if (flags["allow-push"]) project.allowGitPush = true;
+    if (flags["no-sandbox"]) project.sandbox = false;
+    else if (flags.sandbox) project.sandbox = true;
     if (flags["max-rounds"]) project.maxRounds = Math.max(1, Number(flags["max-rounds"]));
     if (fastPaths !== undefined) project.fastPaths = fastPaths;
     if (flags["local-marker"] !== undefined) project.localMarkerFile = normalizeLocalMarkerFile(flags["local-marker"]);
@@ -245,6 +248,7 @@ async function cmdEnroll(subArgs, flags) {
       defaultChannel: flags.channel === "git-ref" ? "git-ref" : "http",
       dirtyPolicy: flags["dirty-policy"] || "safe-block",
       allowGitPush: flags["no-push"] ? false : true,
+      sandbox: flags["no-sandbox"] ? false : flags.sandbox ? true : null,
       maxRounds: flags["max-rounds"] ? Number(flags["max-rounds"]) : 5,
       fastPaths: fastPaths || [],
       localMarkerFile: flags["local-marker"] !== undefined ? normalizeLocalMarkerFile(flags["local-marker"]) : undefined,

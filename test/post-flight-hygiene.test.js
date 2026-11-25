@@ -470,3 +470,73 @@ test("Open-source defaults pass validation, support custom SSD-offload runsDir/w
   await orchestrator.ackHandoff("ho_ssd_01");
   assert.equal(fs.existsSync(rec.worktreePath), false);
 });
+
+test("Multi-round workflow continuation temporarily restores purged prior scratch dir during runAgy", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "agy-scratch-compat-"));
+  t.after(async () => fsp.rm(tmpDir, { recursive: true, force: true }));
+
+  const homeDir = path.join(tmpDir, "home");
+  const { config } = await initBridge({ home: homeDir });
+  const repo = await createRepoPair(tmpDir, "multi-round");
+  addProject(config, {
+    id: "multi-round",
+    name: "Multi Round",
+    repoPath: repo.localDir,
+    allowedBranches: ["main"],
+  });
+  await saveConfig(config, homeDir);
+
+  let round1ScratchExistedInRound2 = false;
+  let round1Id = "";
+  const orchestrator = new Orchestrator({
+    home: homeDir,
+    config,
+    logger: createLogger({ level: "error" }),
+    adapters: {
+      runAgy: async ({ conversationId }) => {
+        if (conversationId && round1Id) {
+          round1ScratchExistedInRound2 = fs.existsSync(path.join(homeDir, "runs", round1Id, "scratch"));
+        }
+        return {
+          ok: true,
+          conversationId: conversationId || "conv-persist-1",
+          text: "ok",
+          structured: { status: "ok", summary: "ok" },
+          exitCode: 0,
+          timedOut: false,
+          aborted: false,
+          durationMs: 5,
+          error: "",
+        };
+      },
+    },
+  });
+  await orchestrator.init();
+  t.after(async () => orchestrator.close());
+
+  const d1 = await orchestrator.dispatchHandoff({
+    projectId: "multi-round",
+    handoffId: "ho_r1",
+    workflowId: "wf_compat",
+    branch: "main",
+    mode: "agent",
+    task: "round 1",
+  });
+  round1Id = d1.record.handoffId;
+  await orchestrator.waitForHandoff(round1Id, 10);
+  await orchestrator.ackHandoff(round1Id);
+  assert.equal(fs.existsSync(path.join(homeDir, "runs", round1Id, "scratch")), false);
+
+  const d2 = await orchestrator.dispatchHandoff({
+    projectId: "multi-round",
+    handoffId: "ho_r2",
+    workflowId: "wf_compat",
+    branch: "main",
+    mode: "agent",
+    task: "round 2",
+  });
+  const r2 = await orchestrator.waitForHandoff(d2.record.handoffId, 10);
+  assert.equal(r2.status, "succeeded");
+  assert.equal(round1ScratchExistedInRound2, true, "prior scratch dir must exist while resumed conversation runs");
+  assert.equal(fs.existsSync(path.join(homeDir, "runs", round1Id, "scratch")), false, "empty compat dir cleaned up after run");
+});

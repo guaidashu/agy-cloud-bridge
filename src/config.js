@@ -74,6 +74,7 @@ export function normalizeProject(project = {}) {
     defaultChannel: project.defaultChannel === "git-ref" ? "git-ref" : "http",
     dirtyPolicy: project.dirtyPolicy === "worktree" ? "worktree" : "safe-block",
     allowGitPush: project.allowGitPush !== false,
+    sandbox: typeof project.sandbox === "boolean" ? project.sandbox : null,
     maxRounds: Math.max(1, Number(project.maxRounds) || 5),
     fastPaths: Array.isArray(project.fastPaths) ? project.fastPaths.map(String).filter(Boolean) : [],
     localMarkerFile: normalizeLocalMarkerFile(project.localMarkerFile),

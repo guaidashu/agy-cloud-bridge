@@ -22,7 +22,9 @@ export const DEFAULT_CONFIG = {
     model: "",
     effort: "",
     mode: "",
-    sandbox: true,
+    // 默认关闭 CLI 终端沙盒（避免 macOS Seatbelt 拦截 Cocos/Electron/WebGL GPU 截图与本地预览端口）；
+    // 文件写范围与敏感路径保护由外部工作区 PreToolUse 护栏（agy-bridge-guard.mjs）统一执行，也可按需开启。
+    sandbox: false,
     // 无头自动化协同默认免人工确认，安全由外部工作区 PreToolUse 护栏与路径白名单兜底
     dangerouslySkipPermissions: true,
     timeoutMs: 15 * 60 * 1000,

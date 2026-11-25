@@ -88,7 +88,7 @@ export function buildAgyArgs(
   const effectiveEffort = effort !== undefined ? effort : agyCfg.effort || "";
   if (effectiveEffort) cliArgs.push("--effort", effectiveEffort);
 
-  const useSandbox = sandbox !== undefined ? sandbox : agyCfg.sandbox !== false;
+  const useSandbox = typeof sandbox === "boolean" ? sandbox : agyCfg.sandbox === true;
   if (useSandbox) cliArgs.push("--sandbox");
 
   const skipPerms =
@@ -383,23 +383,45 @@ export function runAgy({
 
     child.on("close", (code, sig) => {
       rl.close();
+      const elapsedMs = Date.now() - startedAt;
       result.exitCode = code;
       result.signal = sig;
       if (!result.text && result.streamedText) result.text = result.streamedText;
       result.structured = extractStructuredResult(result.text);
 
+      // 当传入 --print-timeout 时，agy 内部超时截断可能以 exitCode=0 退出且不发送最终 result 事件（status=""）。
+      // 此时严禁因存在半截 streamedText 误判为 succeeded，必须标记为 timeout。
+      if (
+        !result.timedOut &&
+        !result.aborted &&
+        timeoutMs > 0 &&
+        !result.status &&
+        !result.structured &&
+        elapsedMs >= Math.max(4000, timeoutMs - 2500)
+      ) {
+        result.timedOut = true;
+        result.error = result.error || `agy 执行达到超时上限（${Math.round(timeoutMs / 1000)}s）被中断`;
+      }
+
       if (result.timedOut) {
         result.reason = { kind: "timeout" };
+        if (!result.error) {
+          result.error = `agy 执行达到超时上限（${Math.round(timeoutMs / 1000)}s）被中断`;
+        }
       } else if (result.aborted) {
         result.reason = { kind: "aborted" };
       } else if (code === 0 && (result.status === "SUCCESS" || (!result.status && result.text.trim()))) {
         result.reason = { kind: "completed" };
       } else {
+        const fallbackMsg =
+          code === 0 && !result.status && !result.text.trim()
+            ? "agy 未返回有效结果事件即提前退出（可能因沙盒限制、会话异常或超时中断）"
+            : `agy 退出码 ${code}`;
         result.reason = {
           kind: "error",
           error: {
             code: result.status || `EXIT_${code ?? "NULL"}`,
-            message: result.error || stderrTail.split("\n").filter(Boolean).slice(-2).join(" | ") || `agy 退出码 ${code}`,
+            message: result.error || stderrTail.split("\n").filter(Boolean).slice(-2).join(" | ") || fallbackMsg,
           },
         };
       }

@@ -27,18 +27,91 @@ test("resolveAgyRunner supports direct binary mode when requireProxy=false", asy
   assert.equal(runner.command, fakeBin);
 });
 
-test("buildAgyArgs constructs launcher -- stream-json args with --conversation", () => {
-  const args = buildAgyArgs(
-    { agy: { sandbox: true, dangerouslySkipPermissions: true, timeoutMs: 60000 } },
+test("buildAgyArgs omits --sandbox by default and includes it only when enabled", () => {
+  const defaultArgs = buildAgyArgs(
+    { agy: { dangerouslySkipPermissions: true, timeoutMs: 60000 } },
     { runnerKind: "launcher", conversationId: "conv-abc", repoPaths: ["/repo/a", "/tmp/scratch"] },
   );
-  assert.equal(args[0], "--");
-  assert.ok(args.includes("--input-format"));
-  assert.ok(args.includes("stream-json"));
-  assert.ok(args.includes("--conversation"));
-  assert.ok(args.includes("conv-abc"));
-  assert.ok(args.includes("--sandbox"));
-  assert.ok(args.includes("--dangerously-skip-permissions"));
+  assert.equal(defaultArgs[0], "--");
+  assert.equal(defaultArgs.includes("--sandbox"), false);
+  assert.ok(defaultArgs.includes("--conversation"));
+  assert.ok(defaultArgs.includes("--dangerously-skip-permissions"));
+
+  const sandboxedArgs = buildAgyArgs(
+    { agy: { sandbox: true, dangerouslySkipPermissions: true, timeoutMs: 60000 } },
+    { runnerKind: "launcher", conversationId: "conv-abc", repoPaths: ["/repo/a"] },
+  );
+  assert.ok(sandboxedArgs.includes("--sandbox"));
+
+  const projectOverrideOff = buildAgyArgs(
+    { agy: { sandbox: true } },
+    { runnerKind: "direct", sandbox: false },
+  );
+  assert.equal(projectOverrideOff.includes("--sandbox"), false);
+});
+
+test("runAgy marks print-timeout exitCode=0 without result event as timedOut instead of false succeeded", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "agy-timeout-test-"));
+  t.after(async () => fsp.rm(tmpDir, { recursive: true, force: true }));
+
+  const mockBin = path.join(tmpDir, "mock-agy-cutoff.sh");
+  await fsp.writeFile(
+    mockBin,
+    `#!/usr/bin/env bash
+read -r line
+echo '{"event":"init","conversation_id":"conv-cutoff"}'
+echo '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"正在后台执行构建，等待完成..."}}'
+sleep 1.7
+exit 0
+`,
+    { mode: 0o755 },
+  );
+  fs.chmodSync(mockBin, 0o755);
+
+  const res = await runAgy({
+    config: {
+      agy: {
+        requireProxy: false,
+        binary: mockBin,
+        sandbox: false,
+        timeoutMs: 4000,
+      },
+    },
+    cwd: tmpDir,
+    task: "preview build",
+  });
+  // Duration 1.7s < 4s => not near 4s timeout? Let's also test near-timeout cutoff:
+  assert.equal(res.conversationId, "conv-cutoff");
+
+  const mockCutoff = path.join(tmpDir, "mock-agy-print-timeout.sh");
+  await fsp.writeFile(
+    mockCutoff,
+    `#!/usr/bin/env bash
+read -r line
+echo '{"event":"init","conversation_id":"conv-pt"}'
+echo '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"正在后台执行构建，等待完成..."}}'
+sleep 4.1
+exit 0
+`,
+    { mode: 0o755 },
+  );
+  fs.chmodSync(mockCutoff, 0o755);
+
+  const cutoffRes = await runAgy({
+    config: {
+      agy: {
+        requireProxy: false,
+        binary: mockCutoff,
+        sandbox: false,
+        timeoutMs: 6000,
+      },
+    },
+    cwd: tmpDir,
+    task: "preview build slow",
+  });
+  assert.equal(cutoffRes.ok, false);
+  assert.equal(cutoffRes.timedOut, true);
+  assert.equal(cutoffRes.reason?.kind, "timeout");
 });
 
 test("extractStructuredResult parses JSON between AGY_RESULT_JSON markers", () => {

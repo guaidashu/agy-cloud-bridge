@@ -656,6 +656,7 @@ if wait_sec == 0:
     print_output_and_exit(rec)
 
 deadline = time.time() + wait_sec
+transient_errors = 0
 while rec.get("status") not in TERMINAL:
     remaining = int(deadline - time.time())
     if remaining <= 0:
@@ -663,14 +664,25 @@ while rec.get("status") not in TERMINAL:
         rec["phase"] = "wait_timeout"
         rec["error"] = f"等待本地处理超时（>{wait_sec}s）"
         break
-    chunk_timeout = max(5, min(remaining, 120))
-    _, wait_res = signed_request(
-        "GET",
-        f"/api/v1/handoffs/{handoff_id}/wait?timeout={chunk_timeout}",
-        body_obj=None,
-        timeout=chunk_timeout + 15,
-    )
-    rec = wait_res.get("handoff") or rec
+    chunk_timeout = max(5, min(remaining, 45))
+    try:
+        _, wait_res = signed_request(
+            "GET",
+            f"/api/v1/handoffs/{handoff_id}/wait?timeout={chunk_timeout}",
+            body_obj=None,
+            timeout=chunk_timeout + 15,
+        )
+        transient_errors = 0
+        rec = wait_res.get("handoff") or rec
+    except Exception as exc:
+        msg = str(exc)
+        if any(code in msg for code in ("HTTP 401", "HTTP 403", "HTTP 404")):
+            raise
+        transient_errors += 1
+        if transient_errors >= 8 or time.time() >= deadline:
+            raise
+        time.sleep(min(max(2, poll_interval), max(1, int(deadline - time.time()))))
+        continue
     if rec.get("status") in TERMINAL:
         break
     if time.time() < deadline:
@@ -1096,6 +1108,7 @@ let rec = dispatchRes.handoff || {};
 if (waitSec === 0) printOutputAndExit(rec);
 
 const deadline = Date.now() + waitSec * 1000;
+let transientErrors = 0;
 while (!TERMINAL.has(rec.status)) {
   const remainingSec = Math.floor((deadline - Date.now()) / 1000);
   if (remainingSec <= 0) {
@@ -1104,9 +1117,19 @@ while (!TERMINAL.has(rec.status)) {
     rec.error = `等待本地处理超时（>${waitSec}s）`;
     break;
   }
-  const chunkTimeout = Math.max(5, Math.min(remainingSec, 120));
-  const waitRes = await signedRequest("GET", `/api/v1/handoffs/${handoffId}/wait?timeout=${chunkTimeout}`, null, (chunkTimeout + 15) * 1000);
-  rec = waitRes.handoff || rec;
+  const chunkTimeout = Math.max(5, Math.min(remainingSec, 45));
+  try {
+    const waitRes = await signedRequest("GET", `/api/v1/handoffs/${handoffId}/wait?timeout=${chunkTimeout}`, null, (chunkTimeout + 15) * 1000);
+    transientErrors = 0;
+    rec = waitRes.handoff || rec;
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (msg.includes("HTTP 401") || msg.includes("HTTP 403") || msg.includes("HTTP 404")) throw err;
+    transientErrors += 1;
+    if (transientErrors >= 8 || Date.now() >= deadline) throw err;
+    await new Promise((r) => setTimeout(r, Math.min(Math.max(2, pollInterval) * 1000, Math.max(200, deadline - Date.now()))));
+    continue;
+  }
   if (TERMINAL.has(rec.status)) break;
   if (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, Math.min(pollInterval * 1000, Math.max(200, deadline - Date.now()))));

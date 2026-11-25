@@ -36,7 +36,7 @@ export function buildBridgeConfigJson({
   projectToken,
   group = "",
   defaultChannel = "http",
-  defaultWaitSec = 600,
+  defaultWaitSec = 960,
   localMarkerFile = DEFAULT_LOCAL_MARKER,
 }) {
   const out = {

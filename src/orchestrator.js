@@ -664,6 +664,20 @@ export class Orchestrator {
       `[${handoffId}] 开始通过代理执行本地 agy（项目 ${project.id}${changedProjects.length ? `，变更仓: ${changedProjects.join(",")}` : ""}，第 ${rec.round} 轮）`,
     );
 
+    // 若同 workflow 续聊复用了上一轮 conversationId，临时补齐已被 --ack 清理的历史轮次空 scratch 目录，
+    // 防止 agy 恢复会话句柄时因历史 CWD 不存在导致 run_command 报 no such directory；执行完立即移除空壳。
+    const tempCompatDirs = [];
+    if (rec.conversationId) {
+      for (const prev of Object.values(this.state.handoffs)) {
+        if (!prev || prev.handoffId === handoffId || prev.workflowId !== rec.workflowId) continue;
+        const prevScratch = path.join(this.runsDir, prev.handoffId, "scratch");
+        if (!fs.existsSync(prevScratch)) {
+          await ensureDir(prevScratch).catch(() => {});
+          tempCompatDirs.push(prevScratch);
+        }
+      }
+    }
+
     let agyRes;
     try {
       agyRes = await this.adapters.runAgy({
@@ -672,6 +686,7 @@ export class Orchestrator {
         task: prompt,
         conversationId: rec.conversationId,
         repoPaths: allRepoDirs,
+        sandbox: typeof project.sandbox === "boolean" ? project.sandbox : undefined,
         extraEnv,
         signal,
         logger: this.logger,
@@ -689,6 +704,17 @@ export class Orchestrator {
         error: errorSummary(err),
         reason: { kind: "error", error: { message: errorSummary(err) } },
       };
+    } finally {
+      for (const compatDir of tempCompatDirs) {
+        try {
+          const items = await fs.promises.readdir(compatDir);
+          if (items.length === 0) {
+            await fs.promises.rmdir(compatDir);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
     }
 
     if (agyRes.conversationId) {
