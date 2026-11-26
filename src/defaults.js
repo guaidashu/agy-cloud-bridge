@@ -55,6 +55,8 @@ export const DEFAULT_CONFIG = {
     // 可选：将临时运行产物目录 / 临时 worktree 目录指向 /tmp 或内存盘，进一步降低本机 SSD 写入损耗
     runsDir: "",
     worktreesDir: "",
+    // 全局默认脏工作区策略：safe-block（默认阻断保护） | auto-stash（自动暂存不阻断） | worktree（隔离工作树）
+    defaultDirtyPolicy: "safe-block",
     concurrency: 2,
     defaultMaxRounds: 5,
     waitMaxSeconds: 300,

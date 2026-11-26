@@ -59,7 +59,7 @@ function printUsage() {
   node src/cli.js init [--force] [--runs-dir <dir>] [--worktrees-dir <dir>]
   node src/cli.js start
   node src/cli.js doctor [--skip-proxy]
-  node src/cli.js enroll <repoPath> [--id <id>] [--name <name>] [--group <group>] [--bridge-url <https://...>] [--channel http|git-ref] [--remote <owner/repo>] [--branches "main,feat/*"] [--fast-paths "regex1,regex2"] [--local-marker <relPath>] [--dirty-policy safe-block|worktree] [--allow-push] [--no-push] [--context "..."] [--rotate-token] [--allow-public-repo]
+  node src/cli.js enroll <repoPath> [--id <id>] [--name <name>] [--group <group>] [--bridge-url <https://...>] [--channel http|git-ref] [--remote <owner/repo>] [--branches "main,feat/*"] [--fast-paths "regex1,regex2"] [--local-marker <relPath>] [--dirty-policy safe-block|auto-stash|worktree] [--allow-push] [--no-push] [--context "..."] [--rotate-token] [--allow-public-repo]
   node src/cli.js sync-templates [--id <id>] [--bridge-url <https://...>] [--channel http|git-ref] [--local-marker <relPath>]
   node src/cli.js project add <id> --path <repoPath> [--local-marker <relPath>] [...]
   node src/cli.js project rotate-token <id>
@@ -153,7 +153,7 @@ async function cmdProject(subArgs, flags) {
       repoPath,
       remoteMatch: flags.remote || repoInfo?.remoteUrl || "",
       allowedBranches,
-      dirtyPolicy: flags["dirty-policy"] || "safe-block",
+      dirtyPolicy: flags["dirty-policy"] || config.runtime?.defaultDirtyPolicy || "safe-block",
       allowGitPush: flags["no-push"] ? false : true,
       sandbox: flags["no-sandbox"] ? false : flags.sandbox ? true : null,
       maxRounds: flags["max-rounds"] ? Number(flags["max-rounds"]) : 5,
@@ -246,7 +246,7 @@ async function cmdEnroll(subArgs, flags) {
       remoteMatch: remoteCandidate,
       allowedBranches,
       defaultChannel: flags.channel === "git-ref" ? "git-ref" : "http",
-      dirtyPolicy: flags["dirty-policy"] || "safe-block",
+      dirtyPolicy: flags["dirty-policy"] || config.runtime?.defaultDirtyPolicy || "safe-block",
       allowGitPush: flags["no-push"] ? false : true,
       sandbox: flags["no-sandbox"] ? false : flags.sandbox ? true : null,
       maxRounds: flags["max-rounds"] ? Number(flags["max-rounds"]) : 5,

@@ -291,14 +291,35 @@ export async function prepareRepoForHandoff({
     };
   }
 
-  // 默认 safe-block：若工作区有未提交修改则直接安全阻断
+  let preflightStashed = false;
+  let preflightStashMessage = "";
   if (info.dirtyFiles.length > 0) {
-    return {
-      ok: false,
-      blocked: "dirty_tree",
-      dirtyFiles: info.dirtyFiles,
-      message: `本地仓库存在 ${info.dirtyFiles.length} 项未提交改动，已安全阻断同步以防覆盖本地代码`,
-    };
+    if (project.dirtyPolicy === "auto-stash") {
+      const stashRes = await stashRepoLeftovers({
+        repoPath: project.repoPath,
+        handoffId,
+        message: `agy-bridge-preflight:${handoffId || "sync"}`,
+        gitEnv,
+      });
+      if (!stashRes.ok) {
+        return {
+          ok: false,
+          blocked: "dirty_tree",
+          dirtyFiles: stashRes.remainingDirtyFiles,
+          message: `本地仓库存在 ${info.dirtyFiles.length} 项未提交改动，且自动暂存失败：${stashRes.error || "未知原因"}`,
+        };
+      }
+      preflightStashed = Boolean(stashRes.stashed);
+      preflightStashMessage = stashRes.stashMessage || "";
+    } else {
+      // 默认 safe-block：若工作区有未提交修改则直接安全阻断
+      return {
+        ok: false,
+        blocked: "dirty_tree",
+        dirtyFiles: info.dirtyFiles,
+        message: `本地仓库存在 ${info.dirtyFiles.length} 项未提交改动，已安全阻断同步以防覆盖本地代码`,
+      };
+    }
   }
 
   if (info.branch !== branch) {
@@ -334,6 +355,8 @@ export async function prepareRepoForHandoff({
     changedFiles,
     branch,
     preExistingDirty: false,
+    preflightStashed,
+    preflightStashMessage,
   };
 }
 

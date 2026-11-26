@@ -59,7 +59,20 @@ export function generateProjectToken() {
   return `proj_${crypto.randomBytes(24).toString("hex")}`;
 }
 
-export function normalizeProject(project = {}) {
+export const VALID_DIRTY_POLICIES = new Set(["safe-block", "auto-stash", "worktree"]);
+
+export function normalizeDirtyPolicy(value, fallback = "safe-block") {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return VALID_DIRTY_POLICIES.has(fallback) ? fallback : "safe-block";
+  if (raw === "worktree") return "worktree";
+  if (raw === "auto-stash" || raw === "autostash" || raw === "off" || raw === "none" || raw === "false" || raw === "ignore") {
+    return "auto-stash";
+  }
+  if (raw === "safe-block") return "safe-block";
+  return raw;
+}
+
+export function normalizeProject(project = {}, defaultDirtyPolicy = "safe-block") {
   return {
     id: String(project.id || "").trim(),
     name: String(project.name || project.id || "").trim(),
@@ -72,7 +85,7 @@ export function normalizeProject(project = {}) {
         ? project.allowedBranches.map(String).filter(Boolean)
         : ["main", "feat/*", "collab/*"],
     defaultChannel: project.defaultChannel === "git-ref" ? "git-ref" : "http",
-    dirtyPolicy: project.dirtyPolicy === "worktree" ? "worktree" : "safe-block",
+    dirtyPolicy: normalizeDirtyPolicy(project.dirtyPolicy, defaultDirtyPolicy),
     allowGitPush: project.allowGitPush !== false,
     sandbox: typeof project.sandbox === "boolean" ? project.sandbox : null,
     maxRounds: Math.max(1, Number(project.maxRounds) || 5),
@@ -86,7 +99,17 @@ export function normalizeProject(project = {}) {
 
 export function normalizeConfig(raw = {}) {
   const merged = mergeSection(DEFAULT_CONFIG, raw);
-  merged.projects = Array.isArray(merged.projects) ? merged.projects.map(normalizeProject) : [];
+  const envDirtyPolicy = process.env.AGY_BRIDGE_DEFAULT_DIRTY_POLICY;
+  const defaultDirtyPolicy = normalizeDirtyPolicy(
+    envDirtyPolicy !== undefined && String(envDirtyPolicy).trim() !== ""
+      ? envDirtyPolicy
+      : merged.runtime?.defaultDirtyPolicy,
+    "safe-block",
+  );
+  merged.runtime.defaultDirtyPolicy = defaultDirtyPolicy;
+  merged.projects = Array.isArray(merged.projects)
+    ? merged.projects.map((p) => normalizeProject(p, defaultDirtyPolicy))
+    : [];
   return merged;
 }
 
@@ -238,13 +261,17 @@ export function addProject(config, input) {
   if (!repoPath || !path.isAbsolute(repoPath)) {
     throw new Error("repoPath 必须是有效的本地绝对路径");
   }
-  const project = normalizeProject({
-    ...input,
-    id,
-    name: input.name || id,
-    repoPath,
-    token: input.token || generateProjectToken(),
-  });
+  const defaultDirty = config?.runtime?.defaultDirtyPolicy || "safe-block";
+  const project = normalizeProject(
+    {
+      ...input,
+      id,
+      name: input.name || id,
+      repoPath,
+      token: input.token || generateProjectToken(),
+    },
+    defaultDirty,
+  );
   config.projects.push(project);
   return project;
 }
@@ -282,6 +309,10 @@ export function validateConfig(config) {
   if (!VALID_MODES.has(config?.agy?.mode || "")) {
     errors.push(`agy.mode 不合法：${config?.agy?.mode}`);
   }
+  const rootDirty = config?.runtime?.defaultDirtyPolicy || "safe-block";
+  if (!VALID_DIRTY_POLICIES.has(rootDirty)) {
+    errors.push(`runtime.defaultDirtyPolicy 只能是 safe-block、auto-stash 或 worktree（当前：${rootDirty}）`);
+  }
   const ids = new Set();
   for (const p of config.projects || []) {
     if (!p.id) errors.push("存在缺少 id 的项目");
@@ -290,8 +321,8 @@ export function validateConfig(config) {
     if (!path.isAbsolute(p.repoPath || "")) {
       errors.push(`项目 ${p.id} 的 repoPath 必须是绝对路径`);
     }
-    if (!["safe-block", "worktree"].includes(p.dirtyPolicy)) {
-      errors.push(`项目 ${p.id} 的 dirtyPolicy 只能是 safe-block 或 worktree`);
+    if (!VALID_DIRTY_POLICIES.has(p.dirtyPolicy)) {
+      errors.push(`项目 ${p.id} 的 dirtyPolicy 只能是 safe-block、auto-stash 或 worktree`);
     }
   }
   return { errors, warnings };

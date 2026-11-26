@@ -540,3 +540,64 @@ test("Multi-round workflow continuation temporarily restores purged prior scratc
   assert.equal(round1ScratchExistedInRound2, true, "prior scratch dir must exist while resumed conversation runs");
   assert.equal(fs.existsSync(path.join(homeDir, "runs", round1Id, "scratch")), false, "empty compat dir cleaned up after run");
 });
+
+test("dirtyPolicy=auto-stash and runtime.defaultDirtyPolicy=auto-stash bypass dirty_tree block by auto-stashing before pull", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "agy-autostash-"));
+  t.after(async () => fsp.rm(tmpDir, { recursive: true, force: true }));
+
+  const homeDir = path.join(tmpDir, "home");
+  const { config } = await initBridge({ home: homeDir });
+  config.runtime.defaultDirtyPolicy = "auto-stash";
+  const repo = await createRepoPair(tmpDir, "cocos-game");
+  const proj = addProject(config, {
+    id: "cocos-game",
+    name: "Cocos Game",
+    repoPath: repo.localDir,
+    allowedBranches: ["main"],
+  });
+  assert.equal(proj.dirtyPolicy, "auto-stash");
+  await saveConfig(config, homeDir);
+
+  // Cloud pushes a new commit while local repo has dirty .meta edits
+  await fsp.writeFile(path.join(repo.cloudDir, "sprite.png.meta"), "ver: 2\n");
+  await git(repo.cloudDir, ["add", "sprite.png.meta"]);
+  await git(repo.cloudDir, ["commit", "-m", "feat: add sprite meta"]);
+  await git(repo.cloudDir, ["push", "origin", "main"]);
+
+  await fsp.writeFile(path.join(repo.localDir, "app.js"), "console.log('local cocos touch');\n");
+  await fsp.writeFile(path.join(repo.localDir, "sprite.png.meta"), "ver: local-conflict\n");
+
+  const orchestrator = new Orchestrator({
+    home: homeDir,
+    config,
+    logger: createLogger({ level: "error" }),
+    adapters: {
+      runAgy: async () => ({
+        ok: true,
+        conversationId: "conv-as",
+        text: "ok",
+        structured: { status: "ok", summary: "synced and verified" },
+        exitCode: 0,
+        timedOut: false,
+        aborted: false,
+        durationMs: 5,
+        error: "",
+      }),
+    },
+  });
+  await orchestrator.init();
+  t.after(async () => orchestrator.close());
+
+  const d = await orchestrator.dispatchHandoff({
+    projectId: "cocos-game",
+    handoffId: "ho_autostash_01",
+    branch: "main",
+    mode: "agent",
+    task: "verify auto-stash preflight",
+  });
+  const rec = await orchestrator.waitForHandoff(d.record.handoffId, 10);
+  assert.equal(rec.status, "succeeded");
+  assert.equal(await fsp.readFile(path.join(repo.localDir, "sprite.png.meta"), "utf8"), "ver: 2\n");
+  assert.equal(await git(repo.localDir, ["status", "--porcelain"]), "");
+  assert.match(await git(repo.localDir, ["stash", "list"]), /agy-bridge-preflight:ho_autostash_01/);
+});
