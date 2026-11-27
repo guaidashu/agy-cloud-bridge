@@ -89,7 +89,7 @@ export function buildAgyArgs(
   if (effectiveEffort) cliArgs.push("--effort", effectiveEffort);
 
   const useSandbox = typeof sandbox === "boolean" ? sandbox : agyCfg.sandbox === true;
-  if (useSandbox) cliArgs.push("--sandbox");
+  cliArgs.push(useSandbox ? "--sandbox" : "--sandbox=false");
 
   const skipPerms =
     dangerouslySkipPermissions !== undefined ? dangerouslySkipPermissions : agyCfg.dangerouslySkipPermissions === true;

@@ -34,6 +34,7 @@ test("buildAgyArgs omits --sandbox by default and includes it only when enabled"
   );
   assert.equal(defaultArgs[0], "--");
   assert.equal(defaultArgs.includes("--sandbox"), false);
+  assert.equal(defaultArgs.includes("--sandbox=false"), true);
   assert.ok(defaultArgs.includes("--conversation"));
   assert.ok(defaultArgs.includes("--dangerously-skip-permissions"));
 
@@ -48,6 +49,7 @@ test("buildAgyArgs omits --sandbox by default and includes it only when enabled"
     { runnerKind: "direct", sandbox: false },
   );
   assert.equal(projectOverrideOff.includes("--sandbox"), false);
+  assert.equal(projectOverrideOff.includes("--sandbox=false"), true);
 });
 
 test("runAgy marks print-timeout exitCode=0 without result event as timedOut instead of false succeeded", async (t) => {
